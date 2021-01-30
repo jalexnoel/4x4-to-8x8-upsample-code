@@ -1,0 +1,677 @@
+\documentclass[journal]{IEEEtran}
+\usepackage{natbib}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{CJK}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{comment}
+\usepackage{url}
+
+\makeatletter
+\def\url@leostyle{%
+  \@ifundefined{selectfont}{\def\UrlFont{\sf}}{\def\UrlFont{\small\ttfamily}}}
+\makeatother
+
+\urlstyle{leo}
+
+
+
+
+\hyphenation{op-tical net-works semi-conduc-tor}
+
+
+
+\begin{document}
+
+\title{A Systolic $n \times n$ to $2n \times 2n$ Deconvolution Architecture for Upsampling}
+
+\author{Alex Noel Joseph Raj,
+        Lianhong Cai,
+        Wei Li,
+        Zhemin Zhuang*,
+        and Tardi Tjahjadi
+\IEEEcompsocitemizethanks{\IEEEcompsocthanksitem Alex Noel Jospeh Raj, Lianhong Cai, Wei Li and Zhemin Zhuang  are with the Department
+of Electronic Engineering, Shantou University China,
+51063.
+Tardi Tjahjadi is with School of Engineering University of Warwick, U.K \protect\\
+E-mail: jalexnoel@stu.edu.cn and zmzhuang@stu.edu.cn 
+}
+\thanks{Manuscript received April 19, 2005; revised August 26, 2015.}}
+
+
+\markboth{IEEE Transactions on Circuits and Systems for Video Technology}%
+{Shell \MakeLowercase{\textit{et al.}}: Bare Demo of IEEEtran.cls for Computer Society Journals}
+
+
+
+
+
+
+\maketitle
+
+
+\IEEEpeerreviewmaketitle
+\begin{abstract}
+A  deconvolution accelerator is proposed to upsample $n\times n$ input to $2n\times2n$ output by convolving with a $k\times k$ kernel. Its architecture avoids the need for insertion and padding of zeros and thus eliminates the redundant computations to achieve high resource efficiency with reduced number of multiplier and adders. The architecture is systolic and governed by a reference clock, enabling the sequential placement of the module to represent a pipelined decoder framework. The proposed  accelerator is implemented on a Xilinx XC7Z020 platform, and achieves a performance of 11.2 giga operations per second (GOPS) with resource efficiency of 0.149 GOPS/DSP for upsampling $32\times32$ input to $256\times256$ output using a $5\times5$ kernel at $200$ MHz. Furthermore, its high peak signal to noise ratio of almost  80 db illustrates that the upsampled outputs of the bit truncated accelerator are comparable to MATLAB double precision results.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Upsample, Transposed convolution, FPGA, Deep learning.
+\end{IEEEkeywords}
+%%%% section 1 %%%%
+
+\section{Introduction}\label{sec:introduction}
+\IEEEPARstart{F}{or} the past decade Deep Neural Networks (DNN) have been effectively employed in various applications of computer vision \citep{2019DT,inproceedings12}, speech recognition \citep{inproceedings9} and image segmentation \citep{inproceedings5}. Most of these applications concentrate on classification and segmentation problems.  Convolutional layers form the primary modules of these DNN, where stacks of kernels are convolved with the input images to generate feature maps, that are subsequently passed through pooling and rectification layers to identify the dominant features  \citep{article10}. The process of convolution,    rectification and pooling operations are repeated in a sequence till denser features are acquired from a larger receptive field. Finally, the feature maps are flattened and presented to a fully connected layer which provides a classification score  \citep{inproceedings11}. Over the years researchers have attempted to implement a few notable DNNs on hardware, such as the AlexNet, VGG-16 \citep{inproceedings8} with lesser resources but higher throughput \citep{inproceedings2,article3,inproceedings8}.
+In general these methods suffer from a common problem related to the usage of the pooling layer which gathers information from larger receptive field but loses the significant spatial coordinates from where the information has been obtained. To overcome this problem, DNN architectures incorporating encoder and decoder modules have been proposed, and amongst them U-Net proposed by Olaf Ronneberger et al. is the most popular model that is mainly used for segmentation applications \cite{inproceedings5}. In the U-Net architecture, the  feature maps that are downsampled in the encoder framework are later  upsampled in the decoder stages. Furthermore, the decoder module of the U-Net and its variants include skip connections along with transpose convolution, also referred as upsampler or deconvolution modules, to generate segmentation results of resolution equivalent to the input resolution \cite{inproceedings5}. 
+
+Although many hardware implementations have been produced for encoder module (which is similar to VGG-16 architecture \cite{inproceedings8}), there are very few implementations of the decoder module, which involves the bottle-neck associated with the transpose convolution operation. One of the earliest deconvolution implementations on hardware was proposed by Zhang et al. \cite{article4}, where reverse looping and stride hole skipping mechanisms respectively ensure efficient deconvolution through the selection of input blocks based on output space and the removal of fractional addresses within the looping procedures. The deconvolution accelerator used C based Vivado HLS libraries where loop unrolling and pipelining techniques were introduced to exhibit parallelism on a Zynq-7000 series FPGA.
+Dongseok et al. \cite{2019DT} presented a lightweight CNN segmentation processor that includes: (i) dilation convolutions (insertion of virtual zeros within the kernel elements) for normal convolutions; (ii) transpose convolutions (insertion of virtual zeros within the feature maps) for enlargement of the feature maps; and (iii) the use of region of interest (ROI) based selection algorithm to enhance the throughput of the segmentation model. The authors reported that their model can reduce the segmentation costs by 86.6\% and increase the throughput by 6.7 times. Lu et al. \cite{inproceedings8} introduced the Fast Winograd algorithm (FWA) to reduce the arithmetic complexity involved in the convolution operations and thereby improve the performance of CNN implementations on FPGA.  The FWA exploits the structure similarity of the input feature maps and transforms the convolution operations into Element-Wise Multiplication Manipulation (EWMM), which reduces the number of multiplications and  increases the required number of additions. Xinkai et al. \cite{inproceedings2} extended the use of FWA for transposed convolution implementations on FPGA, where the feature maps presented to the TransConv module were extended (by padding and introducing zeros in between the elements) and decomposed into four smaller subblocks. By applying FWA in parallel to these subblocks, the convolution output was obtained through  element-wise multiplication of the input elements with the corresponding kernel coefficients. A performance improvement of 8.6 times was reported. However, the method was inefficient since FWA is suitable only for small kernels.
+
+A reconfigurable generative network acceleration (GNA) with flexible bits widths for both inputs and kernels weights was proposed by Yan et al. \cite{inproceedings15}. Inter and intra processing element (PE) processing and cross layer scheduling mechanisms are engaged to support the computations in the convolution, deconvolution and residual blocks. The inclusion of the dual convolution mapping method (where convolutions are associated with the outputs and deconvolutions are mapped to the inputs) efficiently balances the PE workload in convolution and deconvolution modules. It also improves the utilization performance of the PEs by 61\% when compared to traditional methods. The GNA reported a 409.6 giga operations per second (GOPS) at 200 MHz with 142 mW power consumption. A convolution and deconvolution architecture capable of generating segmentations outputs close to real time was presented by Liu et al. \cite{inproceedings2}. The deconvolution module does not require addition of zeros between the input elements and produces upsampled outputs through a series of operations VIZ: (i) multiplication of single input pixel with the kernels; (ii) addition of overlapped outputs; and (iii) removal of outputs along the borders. An automatic hardware mapping framework based MATLAB and C scripts was employed to select the best design parameters which were then used to generate the synthesizable HDL code for implementation on the Xilinx Zynq board. A U-Net architecture was implemented and its performance was compared with GPU and CPU implementations. It achieved the best power and energy performance with speed being second only to the GPU implementation. Chang et al. \cite{inproceedings19} presented a massively parallelized  deconvolution accelerator, referred as the TDC method, obtained by transforming the deconvolution operator into the four sparse convolutions. To avoid the overlapping summation problem, the height and width of the input images have to be determined to generate output  blocks that do not overlap. Also the method has a load imbalance problem caused by the weights of the decomposed sparse convolution filters. Later in \cite{article18} the same authors optimized the TDC by rearranging filters which enabled DCNN  accelerator to achieve  better  throughput. When implemented using C based VIVADO HLS tool, the optimised TDC achieved 108  times greater throughput than the traditional DCNN.
+
+Inspired by the TDC method, where upsampling is performed using 4 sparse convolutions, we propose a FPGA based scalable systolic deconvolution architecture (for different $n \times n$ input and $k\times k$ kernels) with reduced  number of multipliers and adders, requiring no additional padding or insertion of zeros in between the inputs. Our contributions are as follow:
+
+\begin{itemize}[leftmargin=*]
+    \item[1)] We present a Register Transfer level (RTL) based deconvolution architecture capable of upsampling $n \times n$ input to $2n \times 2n$ output when convolved with a $k \times k$ kernel. The proposed module can be used as a standalone or readily connected to a pipeline to represent the decoder framework of the U-Net or the deconvolution CNN. We present upsampled outputs for intervals $32 \times 32 $ to $ 64 \times 64$; $64 \times 64 $ to $ 128 \times 128$ and $128 \times 128$  to $256 \times 256$ and compare the bit width truncated FPGA results with those of double precision MATLAB outputs.
+    \item[2)] The proposed architecture is systolic and governed by a single reference clock. After an initial latency, an upsampled element is obtained at every clock pulse which is then streamed to the next stage of the pipeline for further processing. A pipelined version capable of generating $256\times256$ output from $32\times32$ input using $5\times5$ kernel requires only 327.8 \textmu s when operating at the frequency of $200$ MHz.
+    \item[3)] The proposed architecture is coded using Verilog HDL and hence is void of any additional overheads associated in mapping CPU based algorithm directly to FPGAs. Also, the deconvolution architecture includes simple hardware structures such as the shift registers blocks, counters, comparators and FIFOs and thus can be extended to provide upsampled outputs by convolving with different kernel sizes. We also present the relevant equations to upsample $n \times n$ to $2n \times 2n$ using $5 \times 5$ and $7 \times 7$ kernels. 
+\end{itemize}
+
+
+
+
+This paper is organized as follows. Section \ref{sec:UpSampling Techniques} introduces the upsampling techniques used in deep networks. Section \ref{sec:Deconvolution Hardware Architecture} presents the implementation of $4\times4$ to $8\times8$ deconvolution architecture. Section \ref{sec:Design of Experiments} presents the experiments related to bit width requirements. Section \ref{sec:Analysis of the deconvolution accelerator} discusses the required computation time, computation complexity and comparison results with other deconvolution architectures.  Finally Section \ref{sec:Conclusion} summarizes our contributions.
+
+
+%%%% section 2 %%%%
+
+\section{Upsampling Techniques}\label{sec:UpSampling Techniques}
+\IEEEPARstart{T}{he} following are the upsampling methods used in deep networks: (i) Interpolation techniques; (ii) Max unpooling \cite{article6}; and (iii) Transpose Convolution. Interpolation techniques could be either K-Nearest Neighbours, Bilinear or Bicubic interpolation and Bed of Nails. The first two interpolation methods introduce new samples either through direct copying or by a distance based weighted averaging of the neighbouring inputs. With Bed of Nails, upsampling is performed by inserting zeros in the positions other than the copied input elements. Max unpooling operator introduced in the decoder pipeline acts opposite to the max pooling operation of encoder framework. During the forward pass, at each max pooling operation, the positional indices of the maximum values are stored and later, during decoding, upsampling is performed by mapping the inputs at each stage to the corresponding coordinates, with the rest being filled with zeros. This technique is employed in SegNet  \cite{article7}, where coordinates of the maximum values of the feature maps obtained during the forward pass are used for the unpooling process during the decoding stages. The above techniques, though simple and efficient  have a fixed relationship between input and output, and therefore are independent of the associated data. Hence they find less usage in deep networks where generalization through learning from inputs is a fundamental requirement.  
+
+In recent years, many deep learning architectures employ transposed convolution for deconvolution. Transpose convolution can be regarded as the process of obtaining the input dimensions of the initial feature map  with no guarantee of recovery of the actual inputs since it is not an inverse to the convolution operation \cite{article3}. Upsampling using transpose convolution can be achieved by: (i) sparse convolution matrix (SCM) \cite{article22}; and (ii) fractionally strided convolutions (FSC)  \cite{inproceedings2,article4,article3,inproceedings15,inproceedings19}. In SCM based upsampling, the 2D convolution process can be regarded as the multiplication of a SCM with an input image $I$. The convolution operation for an $8 \times 8$  input image with a $5 \times 5$ kernel, to give a $4 \times 4$ valid convolution output $O$ are given by
+\begin{equation}       
+SCM=\left[          
+  \setlength{\arraycolsep}{0.1mm}{ 
+  \begin{array}{ccccc} 
+    k_{(0,0)} & k_{(0,1)}   & ... & 0 & 0\\  
+     0  & k_{(0,0)}   & ... & 0 & 0\\
+     0  & 0     & ... & 0 & 0\\ 
+     \vdots    & \vdots & \ddots & \vdots & \vdots\\
+    0  & 0     & ... & k_{(4,4)} & 0\\
+    0  & 0     & ... & k_{(4,3)} & k_{(4,4)}\\ 
+  \end{array}}
+\right]
+,
+I=\left[           
+  \setlength{\arraycolsep}{0.1mm}{
+  \begin{array}{c}   
+    d_1 \\ d_2 \\ d_3 \\ d_4 \\ \vdots \\ d_{64}  \\  
+  \end{array}}
+\right],
+O=\left[           
+  \setlength{\arraycolsep}{0.1mm}{
+  \begin{array}{c}   
+    r_1 \\ r_2 \\ r_3 \\ \vdots\\ r_{16}  \\ 
+  \end{array}}
+\right]
+\end{equation}
+\begin{equation}
+SCM_{16 \times 64} \times I_{64\times1}=O_{16\times1} .
+\end{equation}
+
+SCM represents the spatial position of the kernels when slided across the image, where $k_{(0,0)}, k_{(0,1)}, k_{(0,2)}... k_{(4,4)}$ denote the kernel values at corresponding positions. $I_{64\times1}$ is the flattened input to enable matrix multiplication and $O_{16\times1}$ denote the flattened output after matrix multiplication which is finally reshaped to $O_{4\times4}$. The number of rows and columns of SCM depend on the number of input and output elements, respectively. Using the above relations, the backward pass which recovers the input resolution ($4 \times 4$  to $8 \times 8$) is trivial by transposing SCM, i.e., $SCM_{64 \times 16}^T \times  O_{16\times1} = I_{64\times1}$. SCM or  $SCM^T$,  which contains the positional coordinates of the kernel, defines the forward or transpose convolution.
+
+
+The traditional convolution process can also be employed to upsample an $n \times n$ input to $2n \times 2n$ output by convolving with a $k \times k$ kernel ($K_{k \times k}$). As the kernel is strided across the input, the convolution operator has to provide contributions associated only with elements present within the $k\times k$ window. Thus, to maintain the connectivity pattern and obtain interpolated outputs, it is convenient to introduce zeros in between the input elements before convolution. This procedure introduces fractional level convolution commonly referred as FSC.
+
+To upsample an input image $I_{n \times n}$, an intermediate extended image $E_{l \times l}$ is created by: (i) insertion of $(s-1)$ zeros in between the input elements; (ii) padding zeros ($ p $)  around the boundaries; and (iii) padding zeros ($a$) along the bottom and right edges of the input $I_{n \times n}$. Table~\ref{table1} summaries the description of all the parameters and Fig.~\ref{fig3} illustrates $E_{l \times l}$, where  $a = (n+2p-k)\ mod \ s$ and $p = \frac{k-1}{2}$.
+Next, $E_{l \times l}$ is convolved with the corresponding kernel $K_{k \times k}$ to obtain the upsampled output $O_{m \times m}$, i.e.,
+\begin{equation}
+     O_{m \times m} = E_{l \times l} \ \bigoplus\ K_{k \times k},
+\end{equation}
+where $\bigoplus$ denotes the valid convolution operation, $l = (2 \times n - 1) + a + 2p $ and $m = 2n = s \times (n - 1) + a + k - 2p$. To upsample $I_{2\times2}$ using $K_{3\times3}$, $p=1$, $a=1$, $l=6$ and $m=2n=4$, i.e. $O_{4\times4}$. Thus. FSC can be readily employed to upsample an $n\times n$ input to a $2n\times2n$ output.  Both SCM and FSC when used for upsampling require introduction of zeros (either in $SCM$ or in $E$) and  Table~\ref{table2} illustrates the number of zeros added for different upsampling intervals.
+\begin{table}[h]
+\renewcommand{\arraystretch}{1}
+\caption{Summary of the parameters in deconvolution}
+\label{table1}
+\centering
+\begin{tabular}{cc}
+\hline
+Parameter		&Description\\
+\hline
+n	& Resolution of the input image\\
+l	& Resolution of the extended image\\
+m	& Resolution of the output image, m = 2n\\
+s	&Forward computation stride s=2 \cite{article13}\\
+k	& Size of the kernel\\
+p	&The  number of zero padding\\
+a	&The number of zeros added to the bottom \\ 
+ &and right edges of the input\\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[htb]
+\centering
+\includegraphics[width=0.9\linewidth]{detailProcess.eps}
+\caption{The image $E_{l \times l}$ is obtained by inserting 0's (white grids) inbetween the elements of the input image $I_{n\times n}$. Cyan and red grids denote the padding zero parameters $a$ and $p$, respectively. The arrows denote the input and kernel values at corresponding positions.}
+\label{fig3}
+\end{figure}
+
+\begin{table}[htb]
+    \centering
+	\renewcommand{\arraystretch}{1}
+	\caption{The number of zeros added for different upsampling intervals.}
+	\label{table2}
+	\setlength{\tabcolsep}{0.5mm}{
+	\begin{tabular}{cccccc}
+		\\ \hline
+		Upsampling Interval & \begin{tabular}[c]{@{}c@{}}$2 \times 2$ \\ $\rightarrow 4 \times 4$ \end{tabular} & \begin{tabular}[c]{@{}c@{}}$4 \times 4 $ \\ $\rightarrow 8 \times 8$\end{tabular} & \begin{tabular}[c]{@{}c@{}}$8 \times 8 $ \\ $\rightarrow 16 \times 16$\end{tabular} & \begin{tabular}[c]{@{}c@{}}$16 \times 16$  \\ $\rightarrow 32 \times 32$\end{tabular} & \begin{tabular}[c]{@{}c@{}}$32 \times 32$  \\ $\rightarrow 64 \times 64$\end{tabular} 
+		\\ \hline
+		\begin{tabular}[c]{@{}c@{}}$ Z_{SCM}$\\ \{ $n^2 \times \ (m^2 - k^2)$ \} \end{tabular}  & 28 & 880 & 15808 & 259840 & 4185088 \\
+		\begin{tabular}[c]{@{}c@{}}$Z_{FSC}$\\ \{ $ l^2 - n^2$) \} \end{tabular}  & 32 & 84 & 260 & 900 & 3332\\
+		 \hline
+		 \multicolumn{6}{l}{$Z_{SCM}$ and $Z_{FSC}$ represents the amount of added zero required.}\\
+		 \hline
+	\end{tabular}}
+\end{table}
+
+Thus, when implemented on hardware the redundant operations (due to the zeros) consume large resources which generally lowers the performance of the hardware. However, when compared across different upsampling intervals the SCM requires exponential padding of zeros along the rows and columns, and thus, like many hardware implementations \cite{inproceedings2,article3} we use FSC technique to upsample the inputs.
+
+%%%% section 3 %%%%
+\section{Deconvolution Hardware Architecture}\label{sec:Deconvolution Hardware Architecture}
+%\subsection{General Module}
+\IEEEPARstart{T}{o} upsample an $n\times n$ input to $2n\times2n$ output using FSC requires the dilation of the input as explained in the previous section. However, in practice for hardware implementations, inserting and padding zeros are not viable. Thus the proposed architecture consists of the following modules:
+\begin{itemize}[leftmargin=*]
+    \item[1)] A shift register ($SR$) module used for temporary buffering of the streamed inputs. The input passes through a series of  flipflops (FFs), $FF_1$ to $FF_n$, in a systolic manner governed by a common reference clock.
+    \item[2)] Four PEs are used to compute interpolated outputs by multiplying the inputs from the shift registers with the stored kernel coefficients. 
+    \item[3)] A Data Control module (DCM) which consists of 2 control switches ($CSW1$ and $CSW2$) and 4 FIFOs arranged in parallel. $CSW1$ facilitates the temporary storage of PE outputs and $CSW2$ enables the systolic streaming of the upsampled results. 
+\end{itemize}
+
+
+\begin{table*}[h]
+\centering
+\caption{The requirements for different kernel sizes and upsampling intervals}
+\label{table3}
+\setlength{\tabcolsep}{1mm}{
+\begin{tabular}{c|ccc|ccc|ccc|ccc|ccc|ccc}
+\hline
+\begin{tabular}[c]{@{}c@{}}Upsampling\\ Interval\end{tabular} & \multicolumn{3}{c|}{$4 \times 4 \rightarrow 8 \times 8$} & \multicolumn{3}{c|}{$8 \times 8 \rightarrow 16 \times 16$} & \multicolumn{3}{c|}{$16 \times 16 \rightarrow 32 \times 32$} & \multicolumn{3}{c|}{$32 \times 32 \rightarrow 64 \times 64$} & \multicolumn{3}{c|}{$64 \times 64 \rightarrow 128 \times 128$} & \multicolumn{3}{c}{$128 \times 128 \rightarrow 256 \times 256$} \\ \hline
+\begin{tabular}[c]{@{}c@{}}Kernel\\ size (k)\end{tabular} & $3 \times 3$ & $5 \times 5$ & $7 \times 7$ & $3 \times 3$ & $5 \times 5$ & $7 \times 7$ & $3 \times 3$ & $5 \times 5$ & $7 \times 7$ & $3 \times 3$ & $5 \times 5$ & $7 \times 7$ & $3 \times 3$ & $5 \times 5$ & $7 \times 7$ & $3 \times 3$ & $5 \times 5$ & $7 \times 7$ \\
+\begin{tabular}[c]{@{}c@{}}No. of FIFOs\\ and PEs\end{tabular} & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 & 4 \\
+\begin{tabular}[c]{@{}c@{}}Length \\ of FIFO\end{tabular} & 16 & 16 & 16 & 64 & 64 & 64 & 256 & 256 & 256 & 1024 & 1024 & 1024 & 4096 & 4096 & 4096 & 16384 & 16384 & 16384 \\
+\begin{tabular}[c]{@{}c@{}}Size of the \\ Flipflops\end{tabular} & 5 & 10 & 15 & 9 & 18 & 27 & 17 & 34 & 51 & 33 & 66 & 99 & 65 & 130 & 195 & 129 & 258 & 387 \\
+\begin{tabular}[c]{@{}c@{}}Zero \\ padding\end{tabular} & 1 & 2 & 3 & 1 & 2 & 3 & 1 & 2 & 3 & 1 & 2 & 3 & 1 & 2 & 3 & 1 & 2 & 3 \\ \hline
+\end{tabular}}
+\end{table*}
+
+The length of the FIFOs and SR module  depends on the kernel size and the upsampling intervals, i.e., $4\times4$ to $8\times8$ or $8\times8$ to $16\times16$, etc., and Table~\ref{table3} illustrates the size requirements for different kernel and upsampling intervals.
+
+
+As the input data progresses at a prescribed data rate into the SR module of the deconvolution accelerator, the PEs multiply the input data with the corresponding kernel coefficient. The control switches of the DCM then enable efficient storage, retrieval and streaming of the upsampled data.
+
+\subsection{Overview of $4\times4 \ to \ 8\times8$ deconvolution architecture }
+
+To upsample a $4\times4$ input to a $8\times8$ output using FSC, a temporary extended image $E$ of size $10\times$10 is created by inserting zeros between the input elements (shown as white grids in Fig.~\ref{fig3}), padding around the boundaries (shown as red grids) and along the right and bottom edges (shown as cyan grids). As the $3 \times 3$ kernel slides across $E$, the output is computed from  four computational patterns expressed in colours: pink, blue, yellow and green. For example, when the kernel is placed at the top left corner of $E$, the output $O_1$ shown as the pink grids, the output image $O_{8 \times 8}$ is computed by multiplying the input $d_1$ with central element $k_5$ of the kernel, i.e.,
+\begin{equation}O_1 = k_5 \times d_1. \end{equation}
+
+Likewise, progressing with a stride of 1 along the row followed by the column, the interpolated elements corresponding to the $8\times8$ output is obtained from the $4\times4$ input. For example, when the kernel is strided along the row and column, the blue  and  yellow grids of $O_{8 \times 8}$  give the interpolated output $O_2$ and $O_3$, i.e.,
+ \begin{equation}O_2 = k_4 \times d_1 + k_6 \times d_2 \end{equation} 
+ \begin{equation}O_3 = k_2 \times d_1 + k_8 \times d_5.\end{equation}
+Similarly the green grid denoted by $O_4$ computes the output 
+ \begin{equation}O_4 = k_1 \times d_1 + k_3 \times d_2 + k_7 \times d_5 + k_9 \times d_6.\end{equation}
+
+Fig.~\ref{fig4}(a)-(d) illustrate the four computation patterns, where $k_1, k_2, k_3, ..., k_9$ respectively correspond to the $3 \times 3$ kernel coefficients $1, 2, 3, ..., 9$, and $d_1, d_2, d_3, ..., d_{16}$ respectively denote the $4 \times 4$ input $1, 2, 3, ..., 16 $. Thus, by extending the $4\times4$ input and employing Equations (4)-(7) we can compute the required $8\times8$ upsampled outputs\footnote{The MATLAB code is provided where we compare  the upsampled outputs obtained from Equations (4) to (7) with the MATLAB inbuilt command.}.
+
+\begin{figure}[htb]
+	\centering
+	\subfigure[$O_1$.]{
+		\includegraphics[width=1.5in]{o1.eps}
+		%\caption{fig1}
+	}
+	\quad
+	\subfigure[$O_2$.]{
+		\includegraphics[width=1.5in]{o2.eps}
+	}
+	\quad
+	\subfigure[$O_3$.]{
+		\includegraphics[width=1.5in]{o3.eps}
+	}
+	\quad
+	\subfigure[$O_4$.]{
+		\includegraphics[width=1.5in]{o4.eps}
+	}
+	\caption{The four colours correspond to different computation patterns that correspond to the colours within $O_{8\times8}$ in Fig.~\ref{fig3}. The white grids denote 0's.}
+\label{fig4}
+\end{figure}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=3.5in]{eachPEs.eps}
+	\caption{The hardware implementation: (a) $PE_1$, (b) $PE_2$, (c) $PE_3$ and (d) $PE_4$ corresponding to Equations (6), (7), (8) and (9), respectively.}
+	\label{fig7}
+\end{figure}
+
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.9\linewidth]{4to8.eps}
+	\caption{$3 \times 3$ kernel deconvolution accelerator for $4 \times 4$ to $8 \times 8$.}
+	\label{fig5}
+\end{figure}
+
+
+The deconvolution architecture to upsample a $4\times 4$ input to a $8\times 8$ output by convolving with a $3 \times 3$ kernel is shown in Fig.~\ref{fig3} and according to  Table~\ref{table3}, the architecture requires: (i) SR module of length $5$ to allow buffering and enable computations to be performed in parallel; (ii) $4$ PEs  to compute Equations (4) to (7); (iii) $4$ FIFOs each of length $16$ are used to store the upsampled outputs; and  (iv) a DCM comprising of multiplexers and $4$ counters ($count1$, $count2$, $count3$, $count4$) for indexing the row and columns of the input and output, respectively.
+
+The length of the SR module is based on the kernel size and the input resolution. In general the length of the SR module ($Num_{SR}$) is given by $Num_{SR} = \frac{k-1}{2} \times n + \frac{k-1}{2}$. For $I_{4\times 4}$  and $K_{3 \times 3}$, the length of SR module is $5$. Furthermore, the length each of the  FIFO is fixed as $n\times n$. Since the input is $4\times 4$, the FIFOs have a length of $16$. 
+
+
+
+The PEs are hardware wired for a particular upsampling interval and kernel size, and execute in parallel to compute one of Equations (4) to (7). For example, $PE_1$ receives input from $SR_1$ and $PE_2$ receives inputs from both $SR_1$ and $D_0$. The input and output connections of each PEs and their associated kernel coefficients are shown Fig.~\ref{fig7}, where $SR_1$, $SR_2$, $SR_4$ and $SR_5$ are respectively the outputs of the flip flops $FF_1$, $FF_2$, $FF_4$ and $FF_5$ of the SR module.
+
+
+To explain the operation of module we use the same inputs and kernel coefficients as shown in Fig.~\ref{fig3}, and the timing diagram of the generation of the outputs for the first 24 clock cycles is shown in Fig.~\ref{fig6}. Once signal $De$ is enabled, the deconvolution accelerator is active and the input data (signal $D_0$ in the timing diagram) enters the SR module and propagates forward through $FF_1$ to $FF_5$ at the positive edge of the clock. 
+
+At time T= t2, both $PE_1$ and $PE_2$ simultaneously receive their input from $D_0$ and $SR_1$, respectively, which are then multiplied with their corresponding kernel coefficients of the $K_{3\times3}$ to present the outputs, $O_1$ and $O_2$, respectively, i.e.,
+\begin{equation} PE_1:  O_1 = SR_1 \times k_5 \end{equation}	
+\begin{equation}PE_2: O_2 = D_0 \times k_6 + SR_1 \times k_4. \end{equation}
+
+\begin{figure*}[htbp]
+	\centering
+	\includegraphics[width=1\linewidth]{clockdigarm.eps}
+	\caption{ Timing Diagram illustrating the upsampling process of  $4\times4$ to $8\times8$ for T=t0 to T=t24.}
+	
+	\label{fig6}
+\end{figure*}
+
+
+Subsequently as the input data advances, between clocks T = t3 and T = t6 and employing just $PE_1$ and $PE_2$, the upsampled elements of the first row ($Row_1$) of $O_{8 \times 8}$ are computed. Due to zero padding at the rightmost boundary of the extended image, the last computation within $PE_2$ requires just the multiplication of $SR_1 \times k_4$. This is achieved by employing a counter ($count2$) to track the column indices and notify the multiplexer as shown in Fig.~\ref{fig7}(b). The architecture of $PE_1$ and $PE_2$ are shown in Fig.~\ref{fig7}(a) and Fig.~\ref{fig7}(b), respectively.
+
+To compute the upsampled elements of $Row_2$ and $Row_3$, along with $PE_1$ and $PE_2$, $PE_3$ and $PE_4$ operate in parallel. At clock T = t6, all the PEs simultaneously receive their input ($D_0$, $SR_1$, $SR_4$ and $SR_5$) from the SR module which then gets multiplied with the corresponding kernel coefficients and to simultaneously produce the respective outputs. Fig.~\ref{fig7}(c) and (d) illustrate the architecture of $PE_3$ and $PE_4$ where  
+\begin{equation}PE_3: O_3 = SR_1 \times k_8 +SR_5 \times k_2 \end{equation}
+\begin{equation}PE_4: O_4 = D_0 \times k_9 + SR_1 \times k_7 + SR_4 \times k_3 + SR_5 \times k_1, \end{equation}	
+and $O_3$ and $O_4$ represent the outputs of $PE_3$ and $PE_4$, respectively.
+	
+The availability of the input data at every clock cycle and the parallel execution of PEs enable the deconvolution accelerator to compute all 16 interpolated outputs of $Row_2$ and $Row_3$ of $O_{8 \times 8}$ within 4 clock cycles, i.e., between T= t7 and T= t10. As the input data proceeds into the deconvolution module the elements of $Row_4$ to $Row_7$ are computed in the similar fashion. Finally, to compute $Row_8$ of $O_{8 \times 8}$, (row index is traced using $count1$) only $PE_3$ and $PE_4$ execute in parallel  and using Equation~(10) and (11) produces upsampled outputs $O_3$ and  $O_4$. Again, to compensate for the zero padding at the bottom and right edges, multiplexers and additional controls are provided within $PE_3$ and $PE_4$ as shown in Fig.~\ref{fig7}(c) and (d).
+
+Thus, at each clock instance, the PEs produce simultaneous outputs: $O_1$, $O_2$ by $PE_1$ and $PE_2$ for $Row_1$; $O_1$, $O_2$ $O_3$, $O_4$  by $PE_1$, $PE_2$, $PE_3$ and $PE_4$ for $Row_2$ to $Row_7$; and $O_3$, $O_4$ by $PE_3$ and $PE_4$ for $Row_8$  are temporarily stored in 4 separate FIFOs, $FIFO_1$, $FIFO_2$, $FIFO_3$ and $FIFO_4$ as shown in Fig.~\ref{fig5}.  The FIFOs write and read commands are synchronised with the input clock of the accelerator module and a series of controls generated by the DCM enables effective writing and streaming of the upsampled outputs from the FIFOs.
+
+
+\subsection{DCM of $4\times4 \ to \ 8\times8$ deconvolution architecture}\label{sec:Data Control Module (DCM)}
+The DCM is shown in Fig.~\ref{fig9} and consists of two control switches $CSW1$ and $CSW2$ that assist in the generation of FIFO write and read commands, enabling temporary storage and retrieval of the data.  $CSW1$ and $CSW2$ are controlled by counters $count1$ and $count3$ which track the row indices of the input and the outputs, respectively. The FIFO write cycle is as follows:
+\begin{itemize}[leftmargin=*]
+    \item[1)] To store $Row_1$ of $O_{8 \times 8}$: Initially $count1$ = 0, $CSW1$ = 0, $PE_1$ and $PE_2$ execute in parallel and their corresponding outputs stored in $FIFO_1$ and $FIFO_2$, respectively. Also, $FIFO_3$ and $FIFO_4$ are write disabled.
+    \item[2)] To store $Row_2$ to $Row_7$ of $O_{8 \times 8}$: (Beginning T = t7) $count1$ increments from 1 to 3, $CSW1$ = 1, $PE_1$, $PE_2$, $PE_3$ and $PE_4$ execute in parallel, and all the FIFOs are write enabled. $PE_3$ and $PE_4$ are connected to $FIFO_1$ and $FIFO_2$ where as $PE_1$ and $PE_2$ are linked to $FIFO_3$ and $FIFO_4$. The FIFO inputs are interchanged to enable easier read of the outputs during the read cycle.
+    \item[3)] Finally for $Row_8$ of $O_{8 \times 8}$: $count1$ = 4, $CSW1$ = 1, only $PE_3$ and $PE_4$ execute in parallel and their outputs are connected to $FIFO_1$ and $FIFO_2$.
+\end{itemize}
+
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=1\linewidth]{DCM.eps}
+	\caption{DCM module architecture. $Fr1$, $Fr2$, $Fr3$ and $Fr4$ are the read enable signals for $FIFO_1$, $FIFO_2$, $FIFO_3$ and $FIFO_4$, respectively. $TC$ and $LC$ are transfer signal and line control signals, respectively.}
+	\label{fig9}
+\end{figure}
+
+The read operation is managed by $CSW2$ and the $Read$ signal is asserted after a delay of $\beta$ clocks cycles and after $De$ = 1 where $\beta = \theta + FIFO_{delay}$. $\theta$ (refer to Section \ref{sec:Computation time}) represents the delay before a valid sample is available at the output of PEs and normally $FIFO_{delay}$ = 2 clock cycles. Thus, to upsample $4 \times 4$ to $8 \times 8$ using a  $3 \times 3$ kernel we set  $\beta$  to 3 ($\theta$ = 2, refer to Table~\ref{table24}). Once the $Read$ is asserted,  $count3$ and $count4$ respectively track the number of rows and columns  of $O_{8 \times 8}$ and the data is read from the FIFOs using separate signals ($Fr1$, $Fr2$, $Fr3$ and $Fr4$) that are controlled by line control ($LC$) and transfer control signals ($TF$), respectively, as shown in Fig.~\ref{fig9}. With $LC = 1$ or $0$, and based on the rising edge of the $TF$, the data is read from the corresponding FIFO in an orderly manner, i.e.,
+
+\begin{equation}
+Fr1 = \ \textbf{!}TF\ \&\&\ LC.
+\end{equation}
+\begin{equation}
+Fr2 = \ TF \ \&\&\ LC.
+\end{equation}
+\begin{equation}
+Fr3 = \ \textbf{!}TF\ \&\&\ \textbf{!}LC.
+\end{equation}
+\begin{equation}
+Fr4 = \ TF\ \&\&\ \textbf{!}LC.
+\end{equation}
+where $\textbf{!}$  and  \&\&  denote the logical NOT and logical AND operations, respectively. The FIFO read cycle is as follows:
+
+\begin{itemize}[leftmargin=*]
+    \item[1)] Initially read $Row_1$ of $O_{8 \times 8}$: $count3 = 0$, $LC = 1$ and $TF$ is toggled for every clock cycle. The generated read signals, $Fr1$ and $Fr2$, using Equations (12) and (13) control the read operations of $FIFO_1$ and $FIFO_2$, respectively. 
+    
+    \item[2)] To read $Row_2$ to $Row_8$ of $O_{8 \times 8}$: Starting at T = t13, $count3$ increments  from 1 to 7, $LC$ increments for each update of  $count3$ and $TF$ is toggled for every clock cycle as shown in Fig.~\ref{fig6}. If $LC$ is 0, using Equations (14) and (15) the computed results are read from $FIFO_3$ and $FIFO_4$. When $LC$ is $1$, $FIFO_1$ and $FIFO_2$ are enabled for reading. Note that $count3$ is controlled by the column counter $count4$ which increments for every $0$ to $2n-1$.
+    
+\end{itemize}
+
+
+The read cycle of the DCM introduces a delay ($DCM_{delay}$) of 3 clock cycles before the outputs are streamed in a systolic manner regulated by a reference clock. The proposed deconvolution architecture  can be extended for various upsampling intervals by just extending the number of FFs within the SR module. The number of the PEs remain the same but their inputs differ. The PE equations for different upsampling internals for different kernel size are given in Appendix A.
+
+\section{Design of Experiments}\label{sec:Design of Experiments}
+%\IEEEPARstart{T}{he} section presents details about the choice bit widths of the kernel coefficients,  PE's  outputs, resource usage and also a comparison of upsampled outputs obtained from the proposed bit truncated FPGA based deconvolution architecture and the double precision Matlab outputs.
+\IEEEPARstart{T}{he} proposed deconvolution accelerator was implemented on the Xilinx XC7Z020 FPGA using the Hardware Descriptive Language, Verilog. The behavioural and structural models were analyzed, simulated and synthesized using Xilinx VIVADO 2017.4. For these experiments, a 50MHz clock frequency was chosen and the kernels of size $3\times3$, $5\times5$ and $7\times7$ were used.
+
+
+\subsection{Kernel bit width}\label{sec:About kernel}
+At the positive edge of a clock signal, the deconvolution accelerator receives a stream of pixels 8-bit width which propagates through the shift register and PEs. The inputs are multiplied with the corresponding kernel coefficients with the results stored in FIFOs. For hardware implementations, fixed point is the natural choice of data representation due to simplicity and less usage of hardware resources. Thus, the floating point kernel coefficients are converted to fixed point by using a scaling factor of $2^f$ and expressing the output as $(f+1)$-bit within the FPGA. Here the optimum $f$ is chosen by comparing the metrics such as Root Mean Square Error (RMSE) and the Peak Signal to Noise Ratio (PSNR) for different combinations of $2^f$  with the corresponding MATLAB double-precision output. Table~\ref{table5} illustrates the results, where the kernel coefficients were selected from the distribution of range between $-1$ to $+1$ by invoking Keras tool \cite{article24}. Initially, when $f$ = 7, 8 and 9, the RMSE is high but with increase in the precision (bit width of the kernel), the PSNR improves and RMSE lowers, suggesting that fixed-point calculations are comparable to those of floating point operations. A scaling factor of $2^{11}$ gives acceptable PSNR of 78.52 db  \cite{article21} with a low RMSE of 0.0303 and indicates that the fixed-point result is close to the MATLAB double precision. Increasing the bit width above 12 resulted in no significant improvement in PSNR  and therefore the bit width of the kernels was set to 12-bit ($f$ = 11 and 1 sign bit). Therefore a kernel value of $(0.13250548)_{10}$ was first by multiplied by 2048 ($2^{11}$) and its result $(271.37122304)_{10}$ was rounded to $(271)_{10}$. Its equivalent fixed-point representation in 11-bit along with 1 sign bit $(000100001111)_2$  was used to represent the filter coefficient. 
+
+\begin{table}[h]
+	\caption{Comparison of different kernel bit widths with MATLAB double precision output}
+	\label{table5}
+	\setlength{\tabcolsep}{1.5mm}{
+	\begin{tabular}{cccccc}
+		\hline
+		$2^f$ & \begin{tabular}[c]{@{}l@{}}Kernel \\ width\end{tabular} & PSNR & RMSE &\begin{tabular}[c]{@{}l@{}}Maximum data \\ length required(bits)\end{tabular} &\begin{tabular}[c]{@{}l@{}} PEs length  \\ word required(bits)\end{tabular}\\
+		\hline
+		7 & 8 & 50.64 & 0.7489 & 18 & 16 to 18\\
+		8 & 9 & 50.13 & 0.7943 & 19 & 17 to 19\\
+		9 & 10 & 60.84 & 0.2315 & 20 & 18 to 20\\
+		10 & 11 & 67.64 & 0.1058 & 21 & 19 to 21\\
+		\textbf{11} & \textbf{12} & \textbf{78.52} & \textbf{0.0303} & \textbf{22} & \textbf{20 to 22}\\
+		12 & 13 & 76.15 & 0.0397 & 23 & 21 to 23\\
+		13 & 14 & 80.70 & 0.0235 & 24 & 22 to 24\\
+		\hline
+	\end{tabular}}
+\end{table}
+
+\begin{table*}[h]
+	\caption{Comparision of Upsampled outputs at 3 different stages of the pipelined architecture}
+	\centering
+	\label{table8}
+	\begin{tabular}{ccccc|ccc|ccc}
+    \hline
+Kernel & \multicolumn{4}{c|}{3x3} & \multicolumn{3}{c|}{5x5} & \multicolumn{3}{c}{7x7} \\ \hline 
+Input & \multicolumn{4}{c|}{Face image} & \multicolumn{3}{c|}{Camera man image} & \multicolumn{3}{c}{Lena image} \\
+Layers & $32 \rightarrow 64$ & $64 \rightarrow 128$ & $128 \rightarrow 256$ & $32 \rightarrow 256$ & $32 \rightarrow 64$ & $64 \rightarrow 128$ & $128 \rightarrow 256$ & $32 \rightarrow 64$ & $64 \rightarrow 128$ & $128 \rightarrow 256 $\\
+PSNR & 86.6321 & 84.1062 & 82.9624 & 82.9624 & 78.2075 & 77.9546 & 77.8560 & 76.3338 & 76.0968 & 76.0041 \\
+RMSE & 0.0238 & 0.0319 & 0.0363 & 0.0363 & 0.0628 & 0.0647 & 0.0654 & 0.0779 & 0.0801& 0.0809 \\ \hline
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[h]
+	\centering
+	\includegraphics[width=6.6in]{compare123.eps}
+ 	\caption{Row 1 presents the upsampled outputs from MATLAB R2019a, and Row 2 illustrates the results from the FPGA. (a) Upsampled outputs  using $3 \times 3$ kernel, (b) Upsampled outputs using $5 \times 5$ kernel and (c) Upsampled outputs using $7 \times 7$ kernel.}
+	\label{fig11}
+\end{figure*}
+
+
+\subsection{ PEs output bit width}\label{sec:About PE output data bits}
+ To illustrate that a deconvolution architecture produces upsampled outputs with considerable accuracy, we compare the upsampled outputs at different upsamping intervals (from $32\times32$ to $256\times256$) with those of the corresponding MATLAB outputs. For a realistic comparison, an image with a flat Power Spectral Density (PSD) (e.g., a white noise) was chosen as an input and the metrics, PSNR and RMSE, were used to evaluate the model. Based on the experimental results of the previous section, the input and kernel bit widths were set to 8-bit and 12-bit, respectively. The output the PEs were varied between 8 to 12-bit and the upsampled results of the deconvolution accelerator was compared with the corresponding MATLAB outputs. Table~\ref{table6} shows the results and it can be inferred that 10-bit output is sufficient since the PSNR averages more than 58 db across all upsampling intervals. Further increasing the bit widths resulted in no significant increase in the PSNR but resulted in considerable increase in hardware. Therefore the choice of 10-bit upsampled outputs is reasonable.
+ With the kernel and input width set to 12-bit and 8-bit, the accelerator produces upsampled outputs of 22 maximum bits (computation within the PEs include both multiplication and addition), and therefore the upsampled elements are left shifted 11 times and the 9 most significant bits (MSB) bits in addition to the sign bit are stored in the respective FIFOs. The shift operation compensates the earlier $2^{11}$ multiplication of the kernel coefficients.
+
+\begin{table}[h]
+	\caption{Resource utilization and comparison of Matlabs double precision output with different PEs output bit widths. The input and kernel bit widths are set to 8-bit and 12-bit.}
+	\label{table6}	
+	\setlength{\tabcolsep}{0.5mm}{
+    \begin{tabular}{cccccccc}
+    \hline
+    layer  & PE Output bitwidth & RMSE & PSNR & LUT & FilpFlop & LUTRAM\\ \hline
+    \multirow{5}{*}{\begin{tabular}[c]{@{}c@{}}$32 \times 32$\\ $\downarrow$ \\ $64 \times 64$\end{tabular}} & 8 & 36.7596 & 16.8234 & 408 & 489 & 6  \\& 9 & 4.9180 & 34.2950 & 459 & 498 & 8  \\
+     & \textbf{10} & \textbf{0.2908} & \textbf{58.8579} & \textbf{484} & \textbf{511} & \textbf{8}  \\
+     & 11 & 0.2908 & 58.8579 & 502 & 528 & 9  \\& 12 & 0.2908 & 58.8579  & 534 & 534 & 10 \\ \hline
+    \multirow{5}{*}{\begin{tabular}[c]{@{}c@{}}$64 \times 64$\\ $\downarrow$ \\ $c128 \times 128$\end{tabular}} & 8 & 38.8182 & 16.3501  & 417 & 517 & 16 \\& 9 & 5.6721 & 33.0559  & 469 & 532 &  18 \\
+     & \textbf{10} & \textbf{0.2895} & \textbf{58.8976}  & \textbf{503} & \textbf{540} & \textbf{20} \\
+     & 11 & 0.2895 & 58.8976  & 540 & 565 & 22 \\
+     & 12 & 0.2895 & 58.8976  & 594 & 580 & 24 \\\hline
+    \multirow{5}{*}{\begin{tabular}[c]{@{}c@{}}$128 \times 128$\\ $\downarrow$ \\ $256 \times 256$\end{tabular}} & 8 & 39.3273 & 16.2369  & 481 & 565 & 32 \\ & 9 & 5.8764 & 32.7486 & 530 &581 & 36 \\
+      & \textbf{10} & \textbf{0.2877} & \textbf{58.9532}  & \textbf{570} & \textbf{596} & \textbf{40}\\
+     & 11 & 0.2877 & 58.9532  & 609 & 614 & 44 \\ 
+     & 12 & 0.2877 & 58.9532  & 657 & 629 & 48 \\
+     \hline
+\end{tabular}}
+\end{table}	
+
+
+\subsection{Comparison of upsampled results of different kernel sizes obtained from a trained U-Net models}
+\label{sec:Upsampled results from}
+We compare the outputs of the deconvolution accelerator with the MATLAB versions for various input sizes on kernel coefficients obtained from a trained U-Net model and natural images obtained from various datasets. First, we upsample an image of size $32\times32$ image from JAFFE dataset \cite{website1} to resolutions: $64 \times 64$, $128 \times 128$ and $256\times 256$ using a $3\times3$ kernel with a maximum and minimum values of $0.7219356$ and $-0.64444816$. The kernel coefficients obtained from the corresponding decoder frame work of the U-Net are stored in a register as 12-bit fixed point representation (as explained in Section \ref{sec:About kernel}) and the upsampled results of the previous stage are provided as inputs to the current stage. Fig.~\ref{fig11}(a) illustrates the upsampled images at each stage of the pipeline (32 to 256). Table~\ref{table8} and Table~\ref{table7} respectively show the corresponding performance scores and the resource usage. Next, the $camera\ man$ and the $Lena$ images are examined with similar interpolation intervals. To illustrate that the proposed model can be extended for different kernel sizes, we also present upsampled results (Fig.~\ref{fig11}(b) and (c)) obtained from $5\times 5$ and $7\times 7$ kernel sizes with maximum and minimum coefficient values of $0.78133786$, $-0.7012087$, $0.5295713$ and $-0.46372077$, respectively. The 10-bit deconvolution accelerator output is compared with the corresponding MATLAB double-precision outputs using the metrics RMSE and PSNR. The outputs across different upsampling intervals show low RMSE and high PSNR of almost 80 db, i.e., the 10-bit deconvolution accelerator indeed produces upsampled outputs comparable to MATLAB results. 
+
+
+\begin{table}[h]
+	\caption{Resource usage for upsampling $32 \times 32$ to $256 \times 256$ using a $3\times3$ kernel.}
+	\label{table7}
+	\setlength{\tabcolsep}{5mm}{
+	\begin{tabular}{cccc}
+		\hline
+		Resource & Utilization & Total & Percentage(\%) \\ \hline
+		LUT & 1649 & 53200 & 3.1 \\ 
+		Flipflop & 1728 & 106400 & 1.62 \\ 
+		BRAM & 26 & 140 & 18.75 \\ 
+		DSP & 27 & 220 & 12.27 \\ 
+		IO & 11 & 125 & 8.80 \\ 
+		BUFG & 1 & 32 & 3.13 \\ 
+		LUTRAM & 68 & 17400 & 0.39 \\ \hline
+	\end{tabular}}
+\end{table}
+
+
+
+
+
+\section{Analysis of the deconvolution accelerator}
+\label{sec:Analysis of the deconvolution accelerator}
+\subsection{Computation time of single Deconvolution Accelerator}\label{sec:Computation time}%%%length of time%%%
+\IEEEPARstart{T}{he} total computation time ($T_{total}$) required in terms of clock cycles for upsampling is given by
+\begin{equation}
+T_{total}= T_{CT}+\theta ,
+\end{equation}
+where $T_{CT}$ is the time required to obtain $2n\times 2n$ samples from a $n\times n$ input, $\theta$ denotes the delay before a valid sample is available at the output of the PEs. $T_{CT}$ is obtained as follows:
+
+\begin{itemize}[leftmargin=*]
+	\item[1)] To compute $Row_1$ of the $2n\times2n$, $PE_1$ and $PE_2$ execute in parallel $n$ times.
+	\item[2)] To compute $Row_{2n}$ of the $2n\times2n$, $PE_3$ and $PE_4$ execute in parallel $n$ times.
+	\item[3)] To computes rows $Row_2$ to $Row_{2n-1}$ of the $2n\times2n$, $PE_1$, $PE_2$, $PE_3$ and $PE_4$ operate in parallel as batches represented by $N$ with each batch  executing $n$ times.
+\end{itemize}
+Therefore 
+\begin{equation}
+    T_{CT}=2 \times n + N \times n ,
+\end{equation}
+where $n$ denotes the input size  and $N$ is given by
+\begin{equation}
+N=\left [ \frac{\left ( Row_{2n}-Row_{1}\right )-1}{2} \right ] .
+\end{equation}
+The denominator indicates that 2 rows of the $2n\times\ 2n$ output are computed when the all the PEs execute in parallel. The initial delay $\theta$ depends on $k$ and is given by
+\begin{equation}
+     \theta =  \lceil \frac{k+1}{4} \rceil + 1 .
+\end{equation}
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=1\linewidth]{cycles.eps}
+	\caption{Visualize the various parameters ($N$, $n$, $\theta$ and $T_P$) of equation (17) and (20) on two stage pipleined deconvolution framework. $T$ and $D$ denote the clock cycles and the upsampling intervals respectively.}
+	\label{fig12}
+\end{figure}
+\begin{table}[h]
+\centering
+\caption{$\theta$, $T_{CT}$ and $T_{total}$ for different kernel size.}
+\label{table24}
+\setlength{\tabcolsep}{1mm}{
+\begin{tabular}{ccccc}
+\hline
+\begin{tabular}[c]{@{}c@{}}Kernel\\ size\end{tabular} & Upsampling intervals & $\theta$(cycles) & $T_{ct}$(cycles) & $T_{total}$(cycles) \\ \hline
+\multirow{4}{*}{$3 \times 3$} & $4 \times 4 \rightarrow 8 \times 8$ & 2 & 20 & 22  \\
+ & $32 \times 32 \rightarrow 64 \times 64$ & 2 & 1056 & 1058  \\
+ & $64 \times 64 \rightarrow 128 \times 128$ & 2 & 4160 & 4162  \\
+ & $128 \times 128 \rightarrow 256 \times 256$ & 2 & 16512 & 16514 \\
+\multirow{4}{*}{$5 \times 5$} & $4 \times 4 \rightarrow 8 \times 8$ & 3 & 20 & 23  \\
+ & $32 \times 32 \rightarrow 64 \times 64$ & 3 & 1056 & 1059  \\
+ & $64 \times 64 \rightarrow 128 \times 128$ & 3 & 4160 & 4163  \\
+ & $128 \times 128 \rightarrow 256 \times 256$ & 3 & 16512 & 16515 \\
+\multirow{4}{*}{$7 \times 7$} & $4 \times 4 \rightarrow 8 \times 8$ & 3 & 20 & 23  \\
+ & $32 \times 32 \rightarrow 64 \times 64$ & 3 & 1056 & 1059  \\
+ &  $64 \times 64 \rightarrow 128 \times 128$ & 3 & 4160 & 4163 \\
+ & $128 \times 128 \rightarrow 256 \times 256$ & 3 & 16512 & 16515 \\
+ \hline
+\end{tabular}}
+\end{table}
+$\lceil \  \rceil$ denotes the ceiling operation. Fig.~\ref{fig12} illustrates $T_{total}$ and Table~\ref{table24} tabulates $\theta $, $T_{CT}$ and $T_{total}$ for different upsampling intervals and kernels.  Thus, using the $3 \times 3$ kernel to upsample $4 \times 4$ to $8 \times 8$, (substitute $k$=3 in Equation (19)), the first effective result at the output of the PEs ($PE_1$ and $PE_2$) is obtained after a delay of two clock cyles, (i.e., $\theta $=2).
+Subsequently $\left \langle PE_1, PE_2  \right \rangle$ execute 4 times in parallel to compute the samples of $Row_1$. For $Row_2$ to $Row_7$, all the PEs independently execute 4 times in parallel but in 3 pipelined batches ($N$ = 3 as computed using Equation (18)). Finally, for $Row_8$,  $\left \langle PE_3,  PE_4 \right \rangle$ again execute 4 times in parallel. Substituting the execution cycles of PEs required to compute each row of the output along with $N$ in Equation (17), the computation time $T_{CT}$ can be found. Thus, to upsample $4 \times 4$ to $8 \times 8$; $T_{CT}$ = 20 (i.e., $2\times 4 + 3\times 4 = 20$) clock cycles, and $T_{total}$ = 22 clock cycles.  The upsampled outputs are temporarily stored in the FIFOs and after an initial delay of $\beta +\ DCM_{delay}$ clock cycles are read simultaneously by initiating the FIFO read signals as in Equations (12) to (15). The time-to-read ($T_R$) the upsampled elements is $2n\times2n$ for an $n\times n$ input since the upsampled elements are streamed in a systolic manner (1 output per clock cycle) in reference to the common clock.  
+
+ 
+
+
+\subsection{Computation time for the Pipelined architecture}\label{sec:About architecture time taken}
+The DCM allows separate read and write controls of the FIFOs and thus the upsampled elements of  deconvolution accelerator can be readily streamed to the next stages: $2n\times 2n$ to $4n\times 4n$, $4n\times 4n$ to $8n\times 8n$ and so on to represent a pipelined architecture that is similar to  the decoder module of the U-Net. The computation time for the pipelined ($T_P$) deconvolution framework is given by
+\begin{equation}
+    T_P = D \times (\beta + DCM_{delay}) + T_R,
+\end{equation}
+where $D$ denotes the number of upsampling intervals, $T_{R}$ (time-to-read) is $ (T_{R}=(2^D \times n)^2$) and  $DCM_{delay}$ = 3, and $\beta$ is the delay before the read signal ($Read$) is asserted (refer to Section \ref{sec:Data Control Module (DCM)}). To upsample  $32 \times 32$ to $256 \times 256$ using  $K_{5\times5}$, $T_{P}$ is computed by substituting $D$ = 3, $\beta + DCM_{delay}$ = 8 ($\beta$ = $\theta$+$FIFO_{delay}$; refer  to Table~\ref{table24} for $\theta$ and Section \ref{sec:Data Control Module (DCM)} for $FIFO_{delay}$ and $DCM_{delay}$, and $T_R$ = $65536$ cycles ($(2^3 \times 32)^2$) in Equation (20)). Thus, $T_p$ = 65560 clock cycles ($3 \times 8 + (2^3\times32)^2$). Furthermore, if a clock frequency of $200$ MHz is considered, then the $T_P$ of the three-stage pipelined deconvolution module capable of  upsampling $32\times32$ to $256\times256$ is 327.8\textmu s ($65557 \times 0.005\textmu s$), thus achieving a frame rate of 3050 fps (frames per second). Fig.~\ref{fig12} illustrates $T_P$  for a two stage pipelined deconvolution framework ($n\times n$ to $4n\times4n$).
+
+
+\subsection{Comparison of Computation complexity of the proposed architecture with other deconvolution architectures }\label{sec:Algorithm comparison}
+The total number of operation (multiplications and additions) required to complete the upsampling process represents the computation complexity of the model. For the proposed architecture the number of multipliers $OP_{mul}$ and adders $OP_{add}$ required to upsample $n\times n$ to $2n\times2n$ using $k\times k$ kernel are given by 
+\begin{equation}
+OP_{mul}=[n \times k -  \frac{1}{8}(k - 1)^2 - \frac{1}{4}(k - 1)]^2.
+\end{equation}
+\begin{equation}
+OP_{add}= [n \times k - \frac{1}{8}(k - 1)^2 - \frac{1}{4}(k - 1)]^2 - (2n)^2 .
+\end{equation}
+The total operations $OP_{total}$ is given by
+\begin{equation}
+OP_{total}=2[n \times k -  \frac{1}{8}(k - 1)^2 - \frac{1}{4}(k - 1)]^2 - 4n^2 .
+\end{equation}
+Table~\ref{table22} shows the $OP_{mul}$, $OP_{add}$ and $OP_{total}$ for various upsampling intervals and kernel sizes.
+
+When compared with existing architectures (refer to Table~\ref{table22}) where the total operations are computed using $k^2n^2 + 2k(k - s)(n - s) + (k^2 - s^2)(n - 2)^2 $ (for \cite{article3}) and $(2 \times k^2 - 1) \times n^2$ for (\cite{article4} and \cite{article14}), the proposed deconvolution architecture reduces the required operations by a maximum of 20\%. We attribute this reduction to the pipelined structure of the architecture which executes either 2 or 4 PEs in parallel per clock cycle to produce the interpolated outputs. Also, at any clock instance, the maximum number of multiplier employed by the accelerator using a kernel of size $k\times k$ is $k^2$, which relates to the parallel execution of all PEs in a batch for rows $2$ to $2n-1$. Furthermore from Table~\ref{table22}, we observe a significant reduction in operations when $3 \times 3$ kernel size is used for up-sampling which directly contributes to resource utilization.
+
+
+
+\begin{table}[h]
+\caption{ Comparision of Total operation of \cite{article3}, \cite{article4} and  \cite{article14}  with our method for different kernel size and upsampling intervals.}
+\label{table22}
+\setlength{\tabcolsep}{1.5mm}{
+\begin{tabular}{ccccccc}
+\hline
+ $k\times k$ & $n\times n$ & Method & $OP_{mul}$ & $OP_{add}$& $OP_{total}$ & \% saving \\ \hline
+\multirow{9}{*}{$3 \times 3$} &   & \cite{article4}\cite{article14} & 9216 & 8192 & 17408 & 20\% \\
+ & $32 \times 32$ & \cite{article3} & 9216 & 7572 & 16788 & 17\% \\
+ &   & our & 9025 & 4929 & 13954 & - \\ \cline{2-7} 
+ &   & \cite{article4}\cite{article14} & 36864 &32768 & 69632 & 19\% \\
+ & $64 \times 64$ & \cite{article3} & 36864 & 31508 & 68372 & 17\% \\
+ &   & our & 36481 & 20097 & 56578 & -\% \\ \cline{2-7} 
+ &   & \cite{article4}\cite{article14} & 147456 & 131072 & 278528 & 18\% \\
+ & $128 \times 128$ & \cite{article3} & 147456& 128532 & 275988 & 17\% \\
+ &   & our & 146689 & 81153 & 227842 & -\\ \hline
+\multirow{9}{*}{$5 \times 5$} &   & \cite{article4}\cite{article14} & 25600 & 24576 & 50176 & 10\% \\
+ & $32 \times 32$ & \cite{article3} & 25600 &22840 & 48440 & 7\% \\
+ &   & our & 24649 & 20553 & 45202 & - \\ \cline{2-7} 
+ &   & \cite{article4}\cite{article14} & 102400& 98304 & 200704 & 8\% \\
+ & $64 \times 64$ & \cite{article3} & 102400 & 94776 & 197176 & 8\% \\
+ &   & our & 100489 & 84105  & 184594 & - \\ \cline{2-7} 
+ &   & \cite{article4}\cite{article14} & 409600 & 393216 & 802816 & 7\% \\
+ & $128 \times 128$ & \cite{article3} & 409600 & 386104 & 795704 & 6\% \\
+ &   & our & 405769 & 340233 & 746002 & - \\ \hline
+\multirow{9}{*}{$7 \times 7$} &   & \cite{article4}\cite{article14} & 50176 & 49152 & 99328 & 8\% \\
+ & $32 \times 32$ & \cite{article3} & 50176 & 45804 & 95980 & 5\% \\
+ &   & our & 47524 & 43428 & 90952 & - \\ \cline{2-7} 
+ &   & \cite{article4}\cite{article14} & 200704 & 196608 & 397312 & 6\% \\
+ & $64 \times 64$ & \cite{article3} & 200704 & 189804 & 390508 & 4\% \\
+ &   & our & 195364 & 178980 & 374344 & -\\ \cline{2-7} 
+ &   & \cite{article4}\cite{article14} & 802816 & 786432 & 1589248 & 4\% \\
+ & $128 \times 128$ & \cite{article3} & 802816 & 772716 & 1575532 & 4\% \\
+ &   & our & 792100 & 726564 & 1518664 &- \\ \hline
+\end{tabular}}
+\end{table}
+
+We also compare our proposed architecture with other deconvolution architectures in terms of (i) total operations, (ii) clock cycles required to complete an upsampling interval, (iii) hardware usage, (iv) GOPS and (v) resource efficiency (GOPS/DSP). To have favourable comparison across all architectures, we compare a single deconvolution module based on fixed point representation capable of upsampling a $128\times128$ input to $256\times256$ using a $5\times5$ kernel and Table~\ref{table23} shows the results. Here GOPS, which denotes the processing performance of the model is computed using \cite{inproceedings2}:
+\begin{equation}
+    GOPS = \frac{OP_{total}}{T_{total} \times \frac{1}{Freq}} ,
+\end{equation}
+where $Freq$ denotes the frequency. From Table~\ref{table23}, it is evident that the proposed architecture uses fewer operations and  therefore less hardware resources to upsample. Furthermore, the proposed architecture produces the best resource efficiency of 0.361 GOPS/DSP at $200$MHz. The lowest clock cycles are required to upsample a $128\times 128$ input to $256\times256$ across all considered architectures. We attribute the improvement to the hardware design which benefits in the reduction of operations and produces a maximum operations saving of $51\% $ (by comparing the $OP_{total}$ of \cite{inproceedings2}) which directly relates to lower usage of the hardware resources. Furthermore,  the proposed deconvolution accelerator presents $GOPS$ = 11.2 and $GOPS/DSP$ = 0.149 for the pipelined architecture $32\times32$ to $256\times256$.
+ 
+ 
+ 
+
+
+\begin{table}[h]
+\caption{Comparison with other deconvolution architectures employing  $5 \times 5$ kernel}
+\label{table23}
+\setlength{\tabcolsep}{0.5mm}{
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+Work  & \cite{inproceedings2} & \cite{article3} & \cite{article4} & Proposed & Proposed \\ \hline
+Layer & \multicolumn{4}{c|}{128 to 256}  & 32 to 256 \\\hline
+Platform & ZCU102 & XC7Z045 & XC7Z020 & XC7Z020 & XC7Z020\\
+
+Precision (fixed point)  & 16$\#$ & 16$\#$ & 12$\#$ & 10 $\|$  12 & 10 $\|$  12\\
+$OP_{total}$  & 1523712 & 795704 & 802816 & 746002 & 925798\\
+$T_{total}$  & 44380 & 16406 & 30878 & 16515 &16531\\
+Input Filpflops  & 49794 & 16384 & 16384 & 258 &457\\
+Output buffer  & 131072 & 147456 & 65536 & 65536 &86016\\
+Total of DSP usage & 28$\#$ & 29$\#$ & 25$\#$ & 25 & 75 \\
+GOPS(Freq-MHz)*  & 6.87$\#$(200) & 9.7$\#$(200) & 2.6$\#$(100) & 9.03(200) & 11.2(200)\\
+\begin{tabular}[c]{@{}c@{}}Resource efficiency\\(GOPS/DSP)*\end{tabular}  & 0.245$\#$ & 0.33$\#$ & 0.104$\#$ & 0.361 & 0.149\\
+\hline
+\multicolumn{6}{|l|}{* GOPS and GOPS/DSP are comnputed on single channel} \\
+
+\multicolumn{6}{|l|}{$\#$ results obtained directly from the reference.}\\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsection{Extension of the proposed Deconvolution Accelerator}\label{sec:Extension of the proposed Deconvolution Accelerator}
+Although traditional U-Nets are based on $3 \times 3$ \cite{article23}  kernels, few architectures either employ $5\times5$ \cite{article18} or $7\times7$  \cite{article7} in their encoder-decoder pipeline. Thus, to allow reusability of the architecture, we present in Appendix A, equations for different upsampling intervals for $3\times3$, $5\times5$ and $7\times7$ kernels. The number of PEs are the same, but the length of the SR module and the FIFOs differ (refer to Table~\ref{table3}). Thus, by rewiring the inputs to the PEs, different upsampling intervals using different kernels sizes are obtained. 
+
+
+
+\section{Conclusion}\label{sec:Conclusion}
+\IEEEPARstart{W}{e} present a FSC based systolic deconvolution architecture capable of upsampling $n\times n$ input to $2n\times 2n$ output using a $k\times k$ kernel. The standalone ($128\times 128$ to $256\times 256$) and the pipelined versions ($32\times32$ to $256\times256$)  implemented using $5\times5$ on a Xilinx XC7Z020 platform, achieved an overall performance and resource efficiency of $9.03\ GOPS$ and $11.2\ GOPS$, $0.361\ GOPS/DSP$ and $0.149\ GOPS/DSP$, respectively. When compared with other deconvolution architectures, the proposed architecture requires the least number of operations (with a saving of $51\%$) which results in lower usage of hardware. Furthermore, the high PNSR value demonstrates that the 10-bit upsampled results of deconvolution accelerator are comparable to MATLAB double precision outputs. In addition, the proposed architecture has a high scalability (the length of FIFOs and SR module change but number of PEs remain same) to suit different upsampling intervals. 
+
+
+
+
+\section*{Acknowledgment}
+This research was financially supported by The Scientific Research Grant of Shantou University, China, (Grant No: NTF17016) and the National Natural Science Foundation of China (No. 82071992).
+\appendices
+\section{}
+%\begin{table}[htb]
+\begin{table}[h]
+    \caption{Equations for extending the deconvolution accelerator different upsampling intervals($n\times n$ to $2n\times2n$ based different kernel sizes.}
+	\setlength{\tabcolsep}{0.001mm}{
+	\begin{tabular}{cc}
+	\hline
+    PE number & Equations of $3 \times \ 3$ kernel upsample architecture \\ \hline
+	$PE_1$ & $SR_{1} \times \ K_5$ \\
+	$PE_2$ & $D_{0} \times \ K_6 + SR_{1} \times \ K_5$ \\
+	$PE_3$ & $SR_{1} \times \ K_8 + SR_{n+1} \times \ K_2 $ \\
+	\multirow{2}{*}{$PE_4$} & $D_{0} \times \ K_9 + SR_{1} \times \ K_7 + SR_{n} \times \ K_3 +$ \\ & $SR_{n+1} \times \ K_1$ \\
+    \hline
+    PE number & Equations of $5 \times \ 5$ kernel upsample architecture\\ \hline
+	\multirow{3}{*}{$PE_1$} & $SR_{2n+2} \times \ K_1 + SR_{2n+1} \times \ K_3 + SR_{2n} \times \ K_5 +$\\ &$SR_{n+2} \times \ K_{11} +SR_{n+1} \times \ K_{13} + SR_{n} \times \ K_{15} +$ \\ &$SR_{2} \times \ K_{21} + SR_{1} \times \ K_{23} + D_{0} \times \ K_{25}$ \\
+	\multirow{2}{*}{$PE_2$} & $SR_{2n+1} \times \ K_2 + SR_{2n} \times \ K_4 + SR_{n+1} \times \ K_{12} +$\\ & $SR_{n} \times \ K_{14} +SR_{1} \times \ K_{22} + D_{0} \times \ K_{24}$ \\
+	\multirow{2}{*}{$PE_3$} & $SR_{n+2} \times \ K_6 + SR_{n+1} \times \ K_8 + SR_{n} \times \ K_{10} +$\\ & $SR_{2} \times \ K_{16} +SR_{1} \times \ K_{18} + D_{0} \times \ K_{20}$ \\
+	\multirow{2}{*}{$PE_4$} & $SR_{n+1} \times \ K_7 + SR_{n} \times \ K_{9} + SR_{1} \times \ K_{17} + $\\ & $D_{0} \times \ K_{19}$ \\
+    \hline
+	PE number & Equations of $7 \times \ 7$ kernel upsample architecture \\ \hline
+	\multirow{3}{*}{$PE_1$} & $SR_{2n+2} \times \ K_9 + SR_{2n+1} \times \ K_{11} + SR_{2n} \times \ K_{13} +$\\ & $ SR_{n+2} \times \ K_{23} +SR_{n+1} \times \ K_{25} + SR_{n} \times \ K_{27} + $\\ & $ SR_{2} \times \ K_{37} + SR_{1} \times \ K_{39} + D_{0} \times \ K_{41}$ \\
+	\multirow{4}{*}{$PE_2$} & $SR_{2n+3} \times \ K_8 + SR_{2n+2} \times \ K_{10} + SR_{2n+1} \times \ K_{12} +$ \\ & $ SR_{2n} \times \ K_{14} + SR_{n+3} \times \ K_{22} + SR_{n+2} \times \ K_{26} + $\\ & $SR_{n+1} \times \ K_{24} + SR_{n} \times \ K_{28} + SR_{3} \times \ K_{36} +$ \\ & $SR_{2} \times \ K_{38} + SR_{1} \times \ K_{40} + D_{0} \times \ K_{42}$ \\
+	\multirow{3}{*}{$PE_3$} & $SR_{3n+2} \times \ K_2 + SR_{3n+1} \times \ K_{4} + SR_{3n} \times \ K_{6} +$ \\ & $ SR_{2n+2} \times \ K_{16} + SR_{2n+1} \times \ K_{18} + SR_{2n} \times \ K_{20} +$ \\ & $ SR_{n+2} \times \ K_{30} + SR_{n+1} \times \ K_{32} + SR_{n} \times \ K_{34} + $\\& $ SR_{2} \times \ K_{44} + SR_{1} \times \ K_{46} + D_{0} \times \ K_{48}$ \\
+	\multirow{3}{*}{$PE_4$} & $SR_{2n+2} \times \ K_9 + SR_{2n+1} \times \ K_{11} + SR_{2n} \times \ K_{13} +$ \\ & $ SR_{n+2} \times \ K_{23} + SR_{n+1} \times \ K_{25} + SR_{n} \times \ K_{27}  + $\\ & $ SR_{2} \times \ K_{37} + SR_{1} \times \ K_{39} + D_{0} \times \ K_{41}$ \\
+    \hline
+    \multicolumn{2}{l}{The coefficients of each row of the kernel are appended}\\
+    \multicolumn{2}{l}{ and numbered in ascending order. Example. $K_{n\times n}$ is $K_1$,$K_2$,$K_2$,...$K_{n^2}$}\\
+    \hline
+	\end{tabular}}
+\end{table}
+
+ 
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\begin{IEEEbiography}[{\includegraphics[trim=0mm 0mm 0mm 0mm, clip, height=1.26in,width=1.08in,keepaspectratio=true]{alex}}]{Alex Noel Joseph Raj} received the B.E. degree in electrical engineering from Madras University, India, in 2001, the M.E. degree in applied electronics from Anna University in 2005, and the Ph.D. degree in Engineering from the University of Warwick in 2009. From October 2009 to September 2011, he was with Valeport LTD Totnes, UK as Design Engineer. From March 2013 to Dec 2016 he was with the Department of Embedded technology, School of Electronics Engineering, Vellore Institute of Technology, Vellore, India as a Professor. Since Jan 2017, he is with Department of Electronic Engineering, College of Engineering, Shantou University, China.  His research interests include signal, image and sonar processing, and FPGA implementations.
+\end{IEEEbiography}
+\vspace{1 mm}
+\begin{IEEEbiography}[{\includegraphics[trim=0mm 0mm 0mm 0mm, clip, height=1.26in,width=1.08in,keepaspectratio=true]{grayCailh}}]{Lianhong Cai} is a master's student majoring in electronic and Information Engineering in Shantou University, China. His research interests include deep learning and neural network on FPGA. 
+\end{IEEEbiography}
+\vspace{1 mm}
+\begin{IEEEbiography}[{\includegraphics[trim=0mm 0mm 0mm 0mm, clip, height=1.26in,width=1.08in,keepaspectratio=true]{liwei}}]{Wei Li} received a bachelor's degree in automation from Changchun University of Science and Technology in July 2018. From September 2019 to now, he is a master's student majoring in electronic and Information Engineering in Shantou University, China. His research interests include artificial intelligence and medical image processing.
+\end{IEEEbiography}
+\vspace{1 mm}
+\begin{IEEEbiography}[{\includegraphics[trim=0mm 0mm 0mm 0mm, clip, height=1.26in,width=1.08in,keepaspectratio=true]{zhuangzhemin}}]{Zhemin Zhuang} received a bachelor's degree in power engineering from Southeast University of China in 1986, a master's degree in measurement technology and instrumentation from Southeast University of China in 1992, and a doctor's degree in Instrument Science and engineering from Southeast University of China in 2002. From July 1986 to September 1989, he served as a technician in the equipment section of Nanjing differential motor factory. From April 1992 to April 1994, he served as an assistant professor in the Department of computer and information engineering, Shantou University. From April 1994 to December 1999, he was a lecturer, later an associate professor with the Department of electronic engineering, College of technology, Shantou University. Since December 2005, he has been a professor in the Department of electronic engineering, School of technology, Shantou University.
+\end{IEEEbiography}
+\vspace{1 mm}
+\begin{IEEEbiography}[{\includegraphics[trim=0mm 0mm 0mm 0mm, clip, height=1.26in,width=1.08in,keepaspectratio=true]{tardi}}]{Tardi Tjahjadi}  (Senior Member, IEEE) received the B.Sc. degree in mechanical engineering from University College London, in 1980, and the M.Sc. degree in management sciences and the Ph.D. degree in total technology from UMIST, U.K., in 1981 and 1984, respectively. He has been an Associate Professor with Warwick University, since 2000, and a Reader, since 2014. His research interests include image processing and computer vision.
+\end{IEEEbiography}
+
+
+
+
+% that's all folks
+\end{document}
+
+
