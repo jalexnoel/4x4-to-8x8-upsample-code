@@ -17,3 +17,6 @@ Supplementary File-A Systolic nxn to 2nx2n Deconvolution Architecture for Upsamp
              5 6 7 8;
              9 10 11 12;
             13 14 15 16];
+
+Verilog Code : We have uploaded the verilog codes alone for review purposes. The complete project will be avaliable for usage once the reviews are completed at the following doi
+10.6084/m9.figshare.13668644
