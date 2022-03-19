@@ -38,10 +38,10 @@ output         de_o
     parameter k7=8'd7;
     parameter k8=8'd8;
     parameter k9=8'd9;
-    parameter pic_src_width=4;          //原始宽度
-    parameter pic_dst_width=8;          //目标宽度
-    parameter pic_src_height=4;         //原始高度
-    parameter pic_dst_height=8;         //目标高度
+    parameter pic_src_width=4;          //鍘熷瀹藉害
+    parameter pic_dst_width=8;          //鐩爣瀹藉害
+    parameter pic_src_height=4;         //鍘熷楂樺害
+    parameter pic_dst_height=8;         //鐩爣楂樺害
 
     
     
@@ -50,8 +50,8 @@ output         de_o
     reg         de_dly1; 
     reg         de_dly2;
     reg         de_dly3;  
-    reg [20:0]  cnt_src_c;   //原始列数   
-    reg [20:0]  cnt_src_l;   //原始行数
+    reg [20:0]  cnt_src_c;   //鍘熷鍒楁暟   
+    reg [20:0]  cnt_src_l;   //鍘熷琛屾暟
     reg [20:0]  cnt_src_l_dly1;
     reg [7:0 ]  data_dly1;    
     reg [15:0]  line1_data_1;
@@ -452,5 +452,6 @@ output         de_o
     
 
     
+   
     
 endmodule
